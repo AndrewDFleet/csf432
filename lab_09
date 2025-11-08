@@ -1,0 +1,648 @@
+# Lab 09 ASA 5505 Network Documentation
+
+**Prepared for:** CICSO Officer for CSF 432 
+**Prepared by:** Andrew Fleet 
+**Date:** November 8, 2025  
+**Version:** 1.0
+
+---
+
+## Table of Contents
+
+1. Executive Summary
+2. Network Overview
+3. Physical Topology
+4. Logical Topology
+5. Equipment Inventory
+6. Network Addressing Scheme
+7. VLAN Configuration
+8. Routing Configuration
+9. Security Configuration
+10. Network Services
+11. Configuration Details
+12. Testing and Verification
+
+---
+
+## 1. Executive Summary
+
+This network documentation describes a lab environment implementing a Cisco ASA 5505 firewall to manage traffic between internal networks (LAN and DMZ) and the external network (internet). The configuration includes NAT, access control lists (ACLs), DHCP services, and stateful packet inspection to provide comprehensive network security.
+
+**Key Capabilities:**
+- Firewall security with zone-based policies
+- Network Address Translation (PAT and Static NAT)
+- DMZ for public-facing services
+- DHCP services for internal clients
+- Stateful inspection for ICMP and other protocols
+
+---
+
+## 2. Network Overview
+
+### 2.1 Network Purpose
+- **Primary Function:** Lab environment demonstrating enterprise firewall deployment
+- **Supported Services:** 
+  - Internal LAN connectivity with internet access
+  - DMZ hosting for web server
+  - NAT/PAT for address translation
+  - DHCP for automatic IP assignment
+- **User Base:** Internal users (PC-B), external users (PC-C), and DMZ services
+
+### 2.2 Network Architecture
+- **Design Philosophy:** Security zone-based architecture with three zones:
+  - Inside (trusted - security level 100)
+  - DMZ (semi-trusted - security level 70)
+  - Outside (untrusted - security level 0)
+- **Core Components:** ASA 5505 firewall, Layer 2 switches, routers
+- **Redundancy Strategy:** Lab environment (no redundancy implemented)
+
+---
+
+## 3. Physical Topology
+
+### 3.1 Network Diagram
+
+```
+                    Internet
+                       |
+                    [R2] - 10.1.1.0/30
+                    /  \
+                   /    \
+          10.1.1.0/30   10.2.2.0/30
+                 /        \
+              [R1]        [R3]
+                |           |
+         209.165.200.224/29  172.16.3.0/24
+                |           |
+            [ASA 5505]    [PC-C]
+          /     |     \
+         /      |      \
+    E0/1(VLAN1) E0/0(VLAN2) E0/2(VLAN3)
+    192.168.1.0/24  Outside  192.168.2.0/24
+        |                        |
+    [Switch0]                [Switch1]
+        |                        |
+     [PC-B]                [DMZ Server]
+```
+
+### 3.2 Physical Locations
+
+**Lab Environment:**
+- All equipment located in virtual Packet Tracer environment
+- Three network zones: Inside, Outside, DMZ
+
+### 3.3 Cabling Infrastructure
+- Simulated connections via Packet Tracer
+- Copper connections for LAN segments
+- Serial WAN connections between routers
+
+---
+
+## 4. Logical Topology
+
+### 4.1 Network Zones
+
+```
+Internet (Untrusted)
+   |
+[R1 - ISP Edge] 209.165.200.225
+   |
+[ASA Outside] 209.165.200.226 (Security Level 0)
+   |
+   +-- [ASA Inside] 192.168.1.1 (Security Level 100)
+   |      |
+   |      +-- VLAN 1: 192.168.1.0/24 (LAN)
+   |             |
+   |             +-- PC-B (DHCP)
+   |
+   +-- [ASA DMZ] 192.168.2.1 (Security Level 70)
+          |
+          +-- VLAN 3: 192.168.2.0/24 (DMZ)
+                 |
+                 +-- DMZ Server: 192.168.2.3
+```
+
+### 4.2 Security Zones
+- **Inside Zone:** High trust (100) - Full outbound access, restricted inbound
+- **DMZ Zone:** Medium trust (70) - Controlled access from outside and inside
+- **Outside Zone:** No trust (0) - Restricted access, explicit permits only
+
+---
+
+## 5. Equipment Inventory
+
+### 5.1 Core Security Equipment
+
+**Cisco ASA 5505 Firewall:**
+- **Model:** Cisco ASA 5505
+- **Hostname:** ASA
+- **Management IP:** 192.168.1.1 (VLAN 1)
+- **Outside Interface:** 209.165.200.226/29 (VLAN 2)
+- **DMZ Interface:** 192.168.2.1/24 (VLAN 3)
+- **Function:** Stateful firewall, NAT/PAT, DHCP server, access control
+
+### 5.2 Router Equipment
+
+| Device | Model | Hostname | Interfaces | Function |
+|--------|-------|----------|------------|----------|
+| R1 | Cisco 1941 | R1 | G0/0, S0/0/0 (DCE) | ISP Edge Router |
+| R2 | Cisco 1941 | R2 | S0/0/0, S0/0/1 (DCE) | Internet Core Router |
+| R3 | Cisco 1941 | R3 | G0/1, S0/0/1 | Remote Management Router |
+
+### 5.3 Switch Equipment
+
+| Device | Model | Hostname | Location | Connected To |
+|--------|-------|----------|----------|--------------|
+| Switch0 | Cisco 2960-24TT | Switch0 | Inside Network | ASA E0/1, PC-B |
+| Switch1 | Cisco 2960-24TT | Switch1 | DMZ | ASA E0/2, DMZ Server |
+| Switch2 | Cisco 2960-24TT | Switch2 | Outside Network | R3 G0/1, PC-C |
+
+### 5.4 End Devices
+
+| Device | Type | IP Address | Gateway | Network |
+|--------|------|------------|---------|---------|
+| PC-B | Workstation | DHCP (192.168.1.5-36) | 192.168.1.1 | Inside |
+| PC-C | Workstation | 172.16.3.3 | 172.16.3.1 | Outside |
+| DMZ Server | Web Server | 192.168.2.3 | 192.168.2.1 | DMZ |
+
+---
+
+## 6. Network Addressing Scheme
+
+### 6.1 IP Addressing Plan
+
+| Zone | VLAN | Network | Gateway | DHCP Range | Security Level | Description |
+|------|------|---------|---------|------------|----------------|-------------|
+| Inside | 1 | 192.168.1.0/24 | 192.168.1.1 | .5-.36 | 100 | Internal LAN |
+| Outside | 2 | 209.165.200.224/29 | N/A | N/A | 0 | Internet-facing |
+| DMZ | 3 | 192.168.2.0/24 | 192.168.2.1 | Static only | 70 | Public services |
+| WAN1 | N/A | 10.1.1.0/30 | N/A | N/A | N/A | R1-R2 Link |
+| WAN2 | N/A | 10.2.2.0/30 | N/A | N/A | N/A | R2-R3 Link |
+| External | N/A | 172.16.3.0/24 | 172.16.3.1 | N/A | N/A | Remote network |
+
+### 6.2 Static IP Assignments
+
+| Device | Interface | IP Address | Subnet Mask | Purpose |
+|--------|-----------|------------|-------------|---------|
+| R1 | G0/0 | 209.165.200.225 | 255.255.255.248 | ISP Gateway |
+| R1 | S0/0/0 | 10.1.1.1 | 255.255.255.252 | WAN to R2 |
+| R2 | S0/0/0 | 10.1.1.2 | 255.255.255.252 | WAN from R1 |
+| R2 | S0/0/1 | 10.2.2.2 | 255.255.255.252 | WAN to R3 |
+| R3 | S0/0/1 | 10.2.2.1 | 255.255.255.252 | WAN from R2 |
+| R3 | G0/1 | 172.16.3.1 | 255.255.255.0 | Remote LAN |
+| ASA | VLAN 1 (E0/1) | 192.168.1.1 | 255.255.255.0 | Inside Gateway |
+| ASA | VLAN 2 (E0/0) | 209.165.200.226 | 255.255.255.248 | Outside Interface |
+| ASA | VLAN 3 (E0/2) | 192.168.2.1 | 255.255.255.0 | DMZ Gateway |
+| DMZ Server | NIC | 192.168.2.3 | 255.255.255.0 | Web Server |
+| PC-C | NIC | 172.16.3.3 | 255.255.255.0 | External Client |
+
+### 6.3 Public IP Address Space
+
+**ISP Allocated Block:** 209.165.200.224/29
+- Available IPs: 209.165.200.225 - 209.165.200.230
+- Network: 209.165.200.224
+- Broadcast: 209.165.200.231
+- Usage:
+  - .225: R1 G0/0 (ISP router)
+  - .226: ASA outside interface
+  - .227: Static NAT for DMZ server (public address)
+
+---
+
+## 7. VLAN Configuration
+
+### 7.1 VLAN Table
+
+| VLAN ID | Name | Interface | Purpose | Subnet | Security Level |
+|---------|------|-----------|---------|--------|----------------|
+| 1 | inside | E0/1 | Internal LAN | 192.168.1.0/24 | 100 |
+| 2 | outside | E0/0 | Internet connection | 209.165.200.224/29 | 0 |
+| 3 | dmz | E0/2 | DMZ for public services | 192.168.2.0/24 | 70 |
+
+### 7.2 ASA VLAN Configuration
+
+**VLAN 1 (Inside) Configuration:**
+```cisco
+interface vlan 1
+ nameif inside
+ ip address 192.168.1.1 255.255.255.0
+ security-level 100
+```
+
+**VLAN 2 (Outside) Configuration:**
+```cisco
+interface vlan 2
+ nameif outside
+ ip address 209.165.200.226 255.255.255.248
+ security-level 0
+```
+
+**VLAN 3 (DMZ) Configuration:**
+```cisco
+interface vlan 3
+ ip address 192.168.2.1 255.255.255.0
+ no forward interface vlan 1
+ nameif dmz
+ security-level 70
+```
+
+### 7.3 Physical Interface Assignments
+
+**Ethernet0/1 - Inside:**
+```cisco
+interface Ethernet0/1
+ switchport access vlan 1
+```
+
+**Ethernet0/0 - Outside:**
+```cisco
+interface Ethernet0/0
+ switchport access vlan 2
+```
+
+**Ethernet0/2 - DMZ:**
+```cisco
+interface Ethernet0/2
+ switchport access vlan 3
+```
+
+---
+
+## 8. Routing Configuration
+
+### 8.1 ASA Default Route
+
+**Static Default Route:**
+```cisco
+route outside 0.0.0.0 0.0.0.0 209.165.200.225
+```
+
+- **Destination:** 0.0.0.0/0 (all destinations)
+- **Next Hop:** 209.165.200.225 (R1 G0/0)
+- **Interface:** outside
+- **Purpose:** Gateway of last resort for internet-bound traffic
+
+### 8.2 Router Configurations
+
+**R1 Routing:**
+- Connected routes:
+  - 209.165.200.224/29 via G0/0
+  - 10.1.1.0/30 via S0/0/0
+
+**R2 Routing:**
+- Acts as intermediate internet router
+- Connected routes:
+  - 10.1.1.0/30 via S0/0/0
+  - 10.2.2.0/30 via S0/0/1
+
+**R3 Routing:**
+- Connected routes:
+  - 172.16.3.0/24 via G0/1
+  - 10.2.2.0/30 via S0/0/1
+
+---
+
+## 9. Security Configuration
+
+### 9.1 NAT Configuration
+
+**Dynamic PAT for Inside Network:**
+```cisco
+object network inside-net
+ subnet 192.168.1.0 255.255.255.0
+ nat (inside,outside) dynamic interface
+```
+
+**Purpose:** Translates inside private IPs to the outside interface IP (209.165.200.226) using PAT
+
+**Static NAT for DMZ Server:**
+```cisco
+object network dmz-server
+ host 192.168.2.3
+ nat (dmz,outside) static 209.165.200.227
+```
+
+**Purpose:** Maps DMZ server's private IP (192.168.2.3) to public IP (209.165.200.227)
+
+### 9.2 Access Control Lists
+
+**OUTSIDE-DMZ ACL (Applied to outside interface, inbound):**
+```cisco
+access-list OUTSIDE-DMZ permit icmp any host 192.168.2.3
+access-list OUTSIDE-DMZ permit tcp any host 192.168.2.3 eq 80
+access-group OUTSIDE-DMZ in interface outside
+```
+
+**Rules:**
+1. Permit ICMP from any source to DMZ server (192.168.2.3)
+2. Permit HTTP (TCP port 80) from any source to DMZ server
+3. Implicit deny all other traffic
+
+### 9.3 Modular Policy Framework (MPF)
+
+**Global Inspection Policy:**
+```cisco
+class-map inspection_default
+ match default-inspection-traffic
+
+policy-map global_policy
+ class inspection_default
+  inspect icmp
+
+service-policy global_policy global
+```
+
+**Components:**
+- **Class-map:** Identifies default inspection traffic
+- **Policy-map:** Defines inspection actions (ICMP inspection enabled)
+- **Service-policy:** Applies policy globally to all interfaces
+
+**Purpose:** Enables stateful inspection for ICMP, allowing return traffic for legitimate connections
+
+### 9.4 Security Levels and Traffic Flow
+
+| From → To | Security Level | Default Behavior | Configured Behavior |
+|-----------|----------------|------------------|---------------------|
+| Inside → Outside | 100 → 0 | Permit | PAT applied, inspected |
+| Inside → DMZ | 100 → 70 | Permit | Blocked (no forward) |
+| DMZ → Outside | 70 → 0 | Permit | Static NAT applied |
+| DMZ → Inside | 70 → 100 | Deny | Denied |
+| Outside → DMZ | 0 → 70 | Deny | ACL permits HTTP/ICMP |
+| Outside → Inside | 0 → 100 | Deny | Denied |
+
+---
+
+## 10. Network Services
+
+### 10.1 DHCP Configuration
+
+**ASA as DHCP Server for Inside Network:**
+```cisco
+dhcpd address 192.168.1.5-192.168.1.36 inside
+dhcpd dns 8.8.8.8 interface inside
+dhcpd enable inside
+```
+
+**DHCP Scope:**
+- **Network:** 192.168.1.0/24
+- **Range:** 192.168.1.5 - 192.168.1.36 (32 addresses)
+- **Gateway:** 192.168.1.1 (ASA inside interface)
+- **DNS Server:** 8.8.8.8 (Google Public DNS)
+- **Interface:** inside
+- **Lease Time:** Default (depends on ASA version)
+
+### 10.2 DNS Configuration
+
+**DNS Services:**
+- DHCP clients receive DNS server: 8.8.8.8
+- ASA does not provide DNS services, acts as pass-through
+- External DNS resolution handled by Google Public DNS
+
+### 10.3 Web Services
+
+**DMZ Web Server:**
+- **Private IP:** 192.168.2.3
+- **Public IP:** 209.165.200.227 (via static NAT)
+- **Service:** HTTP (TCP port 80)
+- **Access:** Permitted from outside via ACL
+
+---
+
+## 11. Configuration Details
+
+### 11.1 Complete ASA Configuration
+
+```cisco
+! Basic ASA Configuration
+hostname ASA
+enable password [encrypted]
+
+! Interface VLAN 1 (Inside)
+interface vlan 1
+ nameif inside
+ ip address 192.168.1.1 255.255.255.0
+ security-level 100
+!
+interface Ethernet0/1
+ switchport access vlan 1
+!
+
+! Interface VLAN 2 (Outside)
+interface vlan 2
+ nameif outside
+ ip address 209.165.200.226 255.255.255.248
+ security-level 0
+!
+interface Ethernet0/0
+ switchport access vlan 2
+!
+
+! Interface VLAN 3 (DMZ)
+interface vlan 3
+ ip address 192.168.2.1 255.255.255.0
+ no forward interface vlan 1
+ nameif dmz
+ security-level 70
+!
+interface Ethernet0/2
+ switchport access vlan 3
+!
+
+! Routing
+route outside 0.0.0.0 0.0.0.0 209.165.200.225
+
+! NAT Configuration
+object network inside-net
+ subnet 192.168.1.0 255.255.255.0
+ nat (inside,outside) dynamic interface
+!
+object network dmz-server
+ host 192.168.2.3
+ nat (dmz,outside) static 209.165.200.227
+!
+
+! Access Control List
+access-list OUTSIDE-DMZ permit icmp any host 192.168.2.3
+access-list OUTSIDE-DMZ permit tcp any host 192.168.2.3 eq 80
+access-group OUTSIDE-DMZ in interface outside
+
+! Inspection Policy
+class-map inspection_default
+ match default-inspection-traffic
+!
+policy-map global_policy
+ class inspection_default
+  inspect icmp
+!
+service-policy global_policy global
+
+! DHCP Configuration
+dhcpd address 192.168.1.5-192.168.1.36 inside
+dhcpd dns 8.8.8.8 interface inside
+dhcpd enable inside
+```
+
+### 11.2 Verification Commands
+
+**Interface Status:**
+```cisco
+show interface ip brief
+show ip address
+show switch vlan
+```
+
+**NAT Status:**
+```cisco
+show nat
+show xlate
+```
+
+**Routing:**
+```cisco
+show route
+```
+
+**Access Lists:**
+```cisco
+show access-list
+show running-config access-list
+```
+
+**Inspection Policy:**
+```cisco
+show service-policy
+show conn
+```
+
+**DHCP:**
+```cisco
+show dhcpd binding
+show dhcpd state
+```
+
+---
+
+## 12. Testing and Verification
+
+### 12.1 Connectivity Tests
+
+**Test 1: Inside to Outside (PC-B to R1)**
+- **Source:** PC-B (192.168.1.x via DHCP)
+- **Destination:** R1 G0/0 (209.165.200.225)
+- **Expected Result:** Success (PAT translation, ICMP inspection)
+- **Verification:** `ping 209.165.200.225` from PC-B
+
+**Test 2: Outside to DMZ (PC-C to DMZ Server)**
+- **Source:** PC-C (172.16.3.3)
+- **Destination:** DMZ Server public IP (209.165.200.227)
+- **Expected Result:** Success (static NAT, ACL permits)
+- **Verification:** 
+  - `ping 209.165.200.227` from PC-C
+  - HTTP access via web browser to 209.165.200.227
+
+**Test 3: Inside to DMZ (Blocked)**
+- **Source:** PC-B
+- **Destination:** DMZ Server (192.168.2.3)
+- **Expected Result:** Failure (no forward interface vlan 1)
+
+**Test 4: Outside to Inside (Blocked)**
+- **Source:** PC-C
+- **Destination:** PC-B private IP
+- **Expected Result:** Failure (security levels prevent access)
+
+### 12.2 NAT Verification
+
+**Check NAT Translations:**
+```cisco
+ASA# show nat
+
+Auto NAT Policies (Section 2)
+1 (inside) to (outside) source dynamic inside-net interface
+    translate_hits = X, untranslate_hits = Y
+    
+2 (dmz) to (outside) source static dmz-server 209.165.200.227
+    translate_hits = X, untranslate_hits = Y
+```
+
+**Check Active Translations:**
+```cisco
+ASA# show xlate
+```
+
+### 12.3 DHCP Verification
+
+**Check DHCP Bindings:**
+```cisco
+ASA# show dhcpd binding
+
+IP address       Client ID           Lease expiration    Type
+192.168.1.5      xxxx.xxxx.xxxx      3599 seconds        Automatic
+```
+
+### 12.4 Security Verification
+
+**Check Active Connections:**
+```cisco
+ASA# show conn
+```
+
+**Check Access List Hits:**
+```cisco
+ASA# show access-list OUTSIDE-DMZ
+
+access-list OUTSIDE-DMZ; 2 elements; name hash: 0x12345678
+access-list OUTSIDE-DMZ line 1 permit icmp any host 192.168.2.3 (hitcnt=X)
+access-list OUTSIDE-DMZ line 2 permit tcp any host 192.168.2.3 eq www (hitcnt=Y)
+```
+
+---
+
+## Appendix A: Lab Questions and Answers
+
+**Question 1:** Submit a screenshot of the `show ip address` report from the ASA.
+- Shows all three VLAN interfaces with their IP addresses and statuses
+
+**Question 2:** Submit a screenshot of successful ping from PC-B to R1 (209.165.200.225).
+- Verifies inside to outside connectivity with PAT and ICMP inspection
+
+**Question 3:** Submit a screenshot of PC-B's DHCP addressed IP from the Config tab.
+- Verifies DHCP functionality on inside interface
+
+**Question 4:** Submit a screenshot of the `show switch vlan` report.
+- Shows VLAN assignments for all three VLANs and their associated ports
+
+**Question 5:** Submit a screenshot of successful ping from PC-C to DMZ (209.165.200.227).
+- Verifies outside to DMZ connectivity with static NAT and ACL
+
+---
+
+## Appendix B: Key Concepts
+
+### Security Levels
+- Higher security level (100) can access lower security level (0) by default
+- Lower security level cannot access higher security level without explicit ACL
+- Equal security levels require `same-security-traffic permit` command
+
+### NAT Types
+- **Dynamic PAT:** Many-to-one translation using port numbers (inside to outside)
+- **Static NAT:** One-to-one translation (DMZ server to public IP)
+
+### MPF (Modular Policy Framework)
+1. **Class-map:** Identifies traffic to be acted upon
+2. **Policy-map:** Defines actions to take on classified traffic
+3. **Service-policy:** Applies policy map to interfaces
+
+### DMZ Design
+- Medium security level (70) sits between inside (100) and outside (0)
+- Prevents DMZ compromise from affecting inside network
+- `no forward interface vlan 1` blocks direct DMZ to inside traffic
+
+---
+
+## Document Control
+
+**Classification:** Lab Assignment  
+**Course:** CSF 430 Information Assurance  
+**Institution:** University of Rhode Island  
+**Review Schedule:** Per assignment requirements  
+**Status:** Lab Configuration Complete 
